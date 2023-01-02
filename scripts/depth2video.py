@@ -60,11 +60,6 @@ def paint(sampler, image, prompt, t_enc, seed, scale, num_samples=1, callback=No
     model = sampler.model
     seed_everything(seed)
 
-    print("Creating invisible watermark encoder (see https://github.com/ShieldMnt/invisible-watermark)...")
-    wm = "SDV2"
-    wm_encoder = WatermarkEncoder()
-    wm_encoder.set_watermark('bytes', wm.encode('utf-8'))
-
     with torch.no_grad(),\
             torch.autocast("cuda"):
         batch = make_batch_sd(
@@ -145,7 +140,7 @@ def predict(input_image, prompt, steps, num_samples, scale, seed, eta, strength)
 model_path = os.path.join("weights", "512-depth-ema.ckpt")
 sampler = initialize_model("configs/stable-diffusion/v2-midas-inference.yaml", model_path)
 
-PROMPT = ""
+PROMPT = "a cool tree"
 INPUT_IMAGE = ""
 DDIM_STEPS = 100
 GUIDANCE_SCALE = 7
@@ -154,4 +149,6 @@ SEED = 1
 ETA = 0.0
 
 result = predict(INPUT_IMAGE, PROMPT, DDIM_STEPS, 1, GUIDANCE_SCALE, SEED, ETA, STRENGTH)
+
+result.save("test.png")
 
