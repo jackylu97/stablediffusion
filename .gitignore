@@ -163,3 +163,14 @@ cython_debug/
 # IDEs
 .idea/
 .vscode/
+
+# model weights
+midas_models/
+weights/
+src/
+
+# misc
+*.mp4
+*.png
+*.jpeg
+*.jpg

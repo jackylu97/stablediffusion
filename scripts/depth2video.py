@@ -7,14 +7,39 @@ from PIL import Image
 from omegaconf import OmegaConf
 from einops import repeat, rearrange
 from pytorch_lightning import seed_everything
-from imwatermark import WatermarkEncoder
+import pathlib
+import cv2
+import subprocess
 
-from scripts.txt2img import put_watermark
 from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.data.util import AddMiDaS
 
 torch.set_grad_enabled(False)
+
+def vid2frames(video_path, frames_path, n=1, overwrite=True):      
+    if not os.path.exists(frames_path) or overwrite: 
+        try:
+            for f in pathlib.Path(frames_path).glob('*.jpg'):
+                f.unlink()
+        except:
+            pass
+        assert os.path.exists(video_path), f"Video input {video_path} does not exist"
+          
+        vidcap = cv2.VideoCapture(video_path)
+        success,image = vidcap.read()
+        count = 0
+        t=1
+        success = True
+        while success:
+            if count % n == 0:
+                image = cv2.resize(image, (1024, 576), interpolation = cv2.INTER_AREA)
+                cv2.imwrite(frames_path + os.path.sep + f"{t:05}.jpg" , image)     # save frame as JPEG file
+                t += 1
+            success,image = vidcap.read()
+            count += 1
+        print("Converted %d frames" % count)
+    else: print("Frames already unpacked")
 
 
 def initialize_model(config, ckpt):
@@ -119,6 +144,7 @@ def pad_image(input_image):
 def predict(input_image, prompt, steps, num_samples, scale, seed, eta, strength):
     init_image = input_image.convert("RGB")
     image = pad_image(init_image)  # resize to integer multiple of 32
+    print(f"INPUT SIZE: {image.size}")
 
     sampler.make_schedule(steps, ddim_eta=eta, verbose=True)
     assert 0. <= strength <= 1., 'can only work with strength in [0.0, 1.0]'
@@ -137,18 +163,65 @@ def predict(input_image, prompt, steps, num_samples, scale, seed, eta, strength)
     )
     return result
 
-model_path = os.path.join("weights", "512-depth-ema.ckpt")
-sampler = initialize_model("configs/stable-diffusion/v2-midas-inference.yaml", model_path)
-
-PROMPT = "a cool tree"
-INPUT_IMAGE = ""
+BATCH_NAME = "test"
+PROMPT = "a colorful illustration, intricate, highly detailed, digital painting, artstation, concept art, art by artgerm and greg rutkowski and alphonse mucha and victo ngai"
+VIDEO_INIT_PATH = "LP1.mp4"
+# INPUT_IMAGE_PATH = os.path.join("assets", "rick.jpeg")
 DDIM_STEPS = 100
 GUIDANCE_SCALE = 7
 STRENGTH = 0.55
 SEED = 1
 ETA = 0.0
+OUTDIR = os.path.join(os.path.join("outputs", "depth2video"), BATCH_NAME)
+SAVE_DEPTH_IMAGES = True
 
-result = predict(INPUT_IMAGE, PROMPT, DDIM_STEPS, 1, GUIDANCE_SCALE, SEED, ETA, STRENGTH)
 
-result.save("test.png")
+# video_in_frame_path = os.path.join(OUTDIR, 'inputframes') 
+# os.makedirs(video_in_frame_path, exist_ok=True)
+# print(f"Exporting Video Frames to {video_in_frame_path}...")
+# vid2frames(VIDEO_INIT_PATH, video_in_frame_path, 1, True)
+
+# model_path = os.path.join("weights", "512-depth-ema.ckpt")
+# sampler = initialize_model("configs/stable-diffusion/v2-midas-inference.yaml", model_path)
+
+# frame_num = 0
+# for frame_path in sorted(os.listdir(video_in_frame_path)):
+#     full_frame_path = os.path.join(video_in_frame_path, frame_path)
+#     frame = Image.open(full_frame_path)
+#     result = predict(frame, PROMPT, DDIM_STEPS, 1, GUIDANCE_SCALE, SEED, ETA, STRENGTH)
+#     if SAVE_DEPTH_IMAGES:
+#         save_depth_path = os.path.join(OUTDIR, f"depth_{frame_num:05d}.png")
+#         result[0].save(save_frame_path) 
+#     save_frame_path = os.path.join(OUTDIR, f"frame_{frame_num:05d}.png")
+#     result[1].save(save_frame_path)
+#     frame_num += 1
+
+fps = 12
+image_path = os.path.join(OUTDIR, "frame_%05d.png")
+max_frames = 290
+mp4_path = os.path.join(OUTDIR, "out.mp4")
+cmd = [
+    'ffmpeg',
+    '-y',
+    '-vcodec', 'png',
+    '-r', str(fps),
+    '-start_number', str(0),
+    '-i', image_path,
+    '-frames:v', str(max_frames),
+    '-c:v', 'libx264',
+    '-vf',
+    f'fps={fps}',
+    '-pix_fmt', 'yuv420p',
+    '-crf', '17',
+    '-preset', 'veryfast',
+    '-pattern_type', 'sequence',
+    mp4_path
+]
+process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+stdout, stderr = process.communicate()
+if process.returncode != 0:
+    print(stderr)
+    raise RuntimeError(stderr)
+
+
 
